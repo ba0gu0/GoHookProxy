@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/ba0gu0/GoHookProxy/config"
 	"github.com/ba0gu0/GoHookProxy/hook"
 	"github.com/ba0gu0/GoHookProxy/proxy"
@@ -29,8 +30,6 @@ func main() {
 	cfg.MetricsEnable = true
 
 	// 设置连接池参数
-	cfg.MaxIdleConns = 100
-	cfg.MaxTotalConns = 1000
 	cfg.IdleTimeout = 90 * time.Second
 
 	// 验证配置
@@ -44,8 +43,9 @@ func main() {
 		log.Fatal("Failed to create proxy manager:", err)
 	}
 
+	patcher := gomonkey.NewPatches()
 	// 创建并启用hook
-	h := hook.New(pm)
+	h := hook.New(pm, patcher)
 	if err := h.Enable(); err != nil {
 		log.Fatal("Failed to enable hook:", err)
 	}

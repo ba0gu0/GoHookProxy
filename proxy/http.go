@@ -105,6 +105,11 @@ func (d *HTTPProxyDialer) dialHTTP(ctx context.Context, addr string) (net.Conn, 
 
 // dialHTTPS 处理 HTTPS 代理连接
 func (d *HTTPProxyDialer) dialHTTPS(ctx context.Context, addr string) (net.Conn, error) {
+	// 检查必要的配置
+	if d.tlsConfig == nil {
+		return nil, errors.WrapError(errors.ErrTLSConfig, "TLS configuration is missing")
+	}
+
 	// 建立 TCP 连接
 	conn, err := d.dialer.DialContext(ctx, "tcp", d.proxyURL.Host)
 	if err != nil {
@@ -114,15 +119,24 @@ func (d *HTTPProxyDialer) dialHTTPS(ctx context.Context, addr string) (net.Conn,
 		return nil, errors.WrapError(errors.ErrProxyDialFailed, err.Error())
 	}
 
+	// 确保连接在出错时被关闭
+	defer func() {
+		if err != nil {
+			conn.Close()
+		}
+	}()
+
+	// 克隆 TLS 配置以避免并发问题
+	tlsConfig := d.tlsConfig.Clone()
+
 	// 升级到 TLS
-	tlsConn := tls.Client(conn, d.tlsConfig)
+	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		conn.Close()
 		return nil, errors.WrapError(errors.ErrTLSHandshake, err.Error())
 	}
+
 	// 发送 CONNECT 请求
 	if err := d.sendConnectRequest(tlsConn, addr); err != nil {
-		tlsConn.Close()
 		return nil, err
 	}
 

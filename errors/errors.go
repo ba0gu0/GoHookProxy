@@ -27,6 +27,7 @@ var (
 	// TLS 错误
 	ErrTLSHandshake   = errors.New("TLS handshake failed")
 	ErrCertValidation = errors.New("certificate validation failed")
+	ErrTLSConfig      = errors.New("TLS configuration is missing")
 
 	// Context 错误
 	ErrContextCanceled         = errors.New("operation canceled by context")

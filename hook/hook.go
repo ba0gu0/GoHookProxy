@@ -8,29 +8,29 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ba0gu0/GoHookProxy/proxy"
-
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/ba0gu0/GoHookProxy/proxy"
 )
 
 type Hook struct {
 	proxyManager *proxy.ProxyManager
-	patches      *gomonkey.Patches
+	patcher      *gomonkey.Patches
+	enabled      bool
+	mu           sync.Mutex
 
-	// 新增DNS解析缓存
 	dnsCache sync.Map
 	dnsTTL   time.Duration
 }
 
-func New(pm *proxy.ProxyManager) *Hook {
+func New(pm *proxy.ProxyManager, patcher *gomonkey.Patches) *Hook {
 	return &Hook{
 		proxyManager: pm,
-		patches:      gomonkey.NewPatches(),
-		dnsTTL:       5 * time.Minute, // 默认DNS缓存5分钟
+		patcher:      patcher,
+		dnsTTL:       5 * time.Minute,
 	}
 }
 
@@ -77,62 +77,98 @@ func directDialContext(ctx context.Context, network, address string) (net.Conn, 
 }
 
 func (h *Hook) Enable() error {
-	if !h.proxyManager.Config.Enable {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.enabled {
 		return nil
 	}
 
-	// Hook DialContext
-	h.patches.ApplyMethod(reflect.TypeOf(&net.Dialer{}), "DialContext",
-		func(d *net.Dialer, ctx context.Context, network, addr string) (net.Conn, error) {
-			start := time.Now()
-			defer func() {
-				if h.proxyManager.Config.MetricsEnable && h.proxyManager.Metrics != nil {
-					h.proxyManager.Metrics.RecordLatency(time.Since(start))
+	if h.proxyManager == nil {
+		return nil
+	}
+
+	if h.proxyManager.Config.Enable {
+		// 使用传入的 patcher 进行 hook
+		patcher := h.patcher.ApplyMethod(reflect.TypeOf(&net.Dialer{}), "DialContext",
+			func(d *net.Dialer, ctx context.Context, network, addr string) (net.Conn, error) {
+				start := time.Now()
+				defer func() {
+					if h.proxyManager.Config.MetricsEnable && h.proxyManager.Metrics != nil {
+						h.proxyManager.Metrics.RecordLatency(time.Since(start))
+					}
+				}()
+
+				if h.proxyManager.IsProxyAddress(addr) {
+					return directDialContext(ctx, network, addr)
 				}
-			}()
+				return h.proxyManager.DialContext(ctx, network, addr)
+			})
 
-			if h.proxyManager.IsProxyAddress(addr) {
-				return directDialContext(ctx, network, addr)
-			}
-			return h.proxyManager.DialContext(ctx, network, addr)
-		})
-
-	if !h.proxyManager.Config.DNSHook {
-		return nil
-	}
-
-	// Hook DNS解析
-	h.patches.ApplyFunc(net.ResolveIPAddr, func(network, address string) (*net.IPAddr, error) {
-		// 实际解析
-		ipAddr, err := net.ResolveIPAddr(network, address)
-		if err != nil {
-			// 只在启用指标收集时记录错误
-			if h.proxyManager.Config.MetricsEnable && h.proxyManager.Metrics != nil {
-				h.proxyManager.Metrics.RecordErrorType(err)
-			}
-			return nil, err
+		if patcher == nil {
+			h.patcher.Reset()
+			return fmt.Errorf("failed to hook DialContext")
 		}
-
-		return ipAddr, nil
-	})
-
-	if !h.proxyManager.Config.TLSHook {
-		return nil
+		h.enabled = true
 	}
 
-	// Hook TLS配置
-	h.patches.ApplyMethod(reflect.TypeOf(&tls.Config{}), "Clone",
-		func(c *tls.Config) *tls.Config {
-			clone := c.Clone()
+	if h.proxyManager.Config.DNSHook {
 
-			// 注入自定义验证
-			if clone.VerifyPeerCertificate == nil {
-				clone.VerifyPeerCertificate = h.verifyPeerCertificate
+		// Hook DNS解析
+		patcher := h.patcher.ApplyFunc(net.ResolveIPAddr, func(network, address string) (*net.IPAddr, error) {
+			// 实际解析
+			ipAddr, err := net.ResolveIPAddr(network, address)
+			if err != nil {
+				// 只在启用指标收集时记录错误
+				if h.proxyManager.Config.MetricsEnable && h.proxyManager.Metrics != nil {
+					h.proxyManager.Metrics.RecordErrorType(err)
+				}
+				return nil, err
 			}
 
-			return clone
+			return ipAddr, nil
 		})
 
+		if patcher == nil {
+			h.patcher.Reset()
+			return fmt.Errorf("failed to hook ResolveIPAddr")
+		}
+		h.enabled = true
+	}
+
+	if h.proxyManager.Config.TLSHook {
+
+		// Hook TLS配置
+		patcher := h.patcher.ApplyMethod(reflect.TypeOf(&tls.Config{}), "Clone",
+			func(c *tls.Config) *tls.Config {
+				clone := c.Clone()
+
+				// 注入自定义验证
+				if clone.VerifyPeerCertificate == nil {
+					clone.VerifyPeerCertificate = h.verifyPeerCertificate
+				}
+				return clone
+			})
+
+		if patcher == nil {
+			h.patcher.Reset()
+			return fmt.Errorf("failed to hook TLS Clone")
+		}
+		h.enabled = true
+	}
+
+	return nil
+}
+
+func (h *Hook) Disable() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if !h.enabled {
+		return nil
+	}
+	h.patcher.Reset()
+	h.enabled = false
 	return nil
 }
 
@@ -164,10 +200,5 @@ func (h *Hook) verifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x509
 
 	// 可以添加更多自定义验证...
 
-	return nil
-}
-
-func (h *Hook) Disable() error {
-	h.patches.Reset()
 	return nil
 }

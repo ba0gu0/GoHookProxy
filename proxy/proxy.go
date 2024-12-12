@@ -17,7 +17,6 @@ type ProxyManager struct {
 	mu      sync.RWMutex
 	Config  *C.Config
 	dialer  ProxyDialer
-	pool    *ConnPool
 	Metrics *metrics.MetricsCollector
 }
 
@@ -29,7 +28,6 @@ type ProxyDialer interface {
 
 // New 创建代理管理器
 func New(config *C.Config) (*ProxyManager, error) {
-	// 添加config验证
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
@@ -41,21 +39,10 @@ func New(config *C.Config) (*ProxyManager, error) {
 		pm.Metrics = metrics.NewMetricsCollector()
 	}
 
-	// 先更新配置
+	// 更新配置
 	if err := pm.UpdateConfig(config); err != nil {
 		return nil, err
 	}
-
-	// 创建连接池时传入 metrics
-	pm.pool = NewConnPool(
-		config.MaxIdleConns,
-		config.MaxTotalConns,
-		config.IdleTimeout,
-		pm.Metrics, // 可以为 nil
-	)
-
-	// 启动定期清理
-	go pm.startCleanup()
 
 	return pm, nil
 }
@@ -82,7 +69,6 @@ func (pm *ProxyManager) UpdateConfig(config *C.Config) error {
 
 	pm.Config = config
 	pm.dialer = dialer
-
 	return nil
 }
 
@@ -117,18 +103,10 @@ func createProxyDialer(config *C.Config, metrics *metrics.MetricsCollector) (Pro
 	}
 }
 
-func (pm *ProxyManager) startCleanup() {
-	ticker := time.NewTicker(time.Minute)
-	for range ticker.C {
-		pm.pool.CleanUp()
-	}
-}
-
 // GetMetrics 获取指标
 func (pm *ProxyManager) GetMetrics() *metrics.Metrics {
-	// 检查是否启用了指标收集
 	if !pm.Config.MetricsEnable || pm.Metrics == nil {
-		return &metrics.Metrics{} // 返回空指标
+		return &metrics.Metrics{}
 	}
 	return pm.Metrics.GetSnapshot()
 }
@@ -138,12 +116,10 @@ func (pm *ProxyManager) IsProxyAddress(addr string) bool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	// 如果配置为空或代理未启用，则不是代理地址
 	if pm.Config == nil || !pm.Config.Enable {
 		return false
 	}
 
-	// 构造代理地址
 	proxyAddr := fmt.Sprintf("%s:%d", pm.Config.ProxyIP, pm.Config.ProxyPort)
 	return addr == proxyAddr
 }
@@ -160,22 +136,10 @@ func (pm *ProxyManager) DialContext(ctx context.Context, network, addr string) (
 
 	start := time.Now()
 
-	// 只在启用指标收集时记录协议类型
 	if pm.Config.MetricsEnable && pm.Metrics != nil {
 		pm.Metrics.RecordProtocol(network)
 	}
 
-	// 1. 尝试从连接池获取
-	if conn, err := pm.pool.Get(network, addr); err == nil && conn != nil {
-		return &poolConn{
-			Conn:    conn,
-			network: network,
-			addr:    addr,
-			pool:    pm.pool,
-		}, nil
-	}
-
-	// 2. 创建新连接
 	dialer := pm.GetDialer()
 	if dialer == nil {
 		return nil, errors.ErrUnsupportedProxy
@@ -189,16 +153,9 @@ func (pm *ProxyManager) DialContext(ctx context.Context, network, addr string) (
 		return nil, err
 	}
 
-	// 只在启用指标收集时记录延迟
 	if pm.Config.MetricsEnable && pm.Metrics != nil {
 		pm.Metrics.RecordLatency(time.Since(start))
 	}
 
-	// 3. 包装连接
-	return &poolConn{
-		Conn:    conn,
-		network: network,
-		addr:    addr,
-		pool:    pm.pool,
-	}, nil
+	return conn, nil
 }

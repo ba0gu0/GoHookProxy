@@ -7,10 +7,8 @@ import (
 
 // Default values
 const (
-	DefaultMaxIdleConns  = 100
-	DefaultMaxTotalConns = 1000
-	DefaultIdleTimeout   = time.Minute * 5
-	DefaultKeepAlive     = time.Minute * 5
+	DefaultIdleTimeout = time.Minute * 5
+	DefaultKeepAlive   = time.Minute * 5
 
 	// HTTP proxy defaults
 	DefaultHTTPTimeout    = time.Second * 30
@@ -47,11 +45,8 @@ const (
 )
 
 type Config struct {
-	// Connection pool settings
-	MaxIdleConns  int
-	MaxTotalConns int
-	IdleTimeout   time.Duration
-	KeepAlive     time.Duration
+	IdleTimeout time.Duration
+	KeepAlive   time.Duration
 
 	// Proxy configurations
 	HTTPConfig  *HTTPConfig
@@ -123,12 +118,10 @@ func DefaultHTTPConfig() *HTTPConfig {
 
 func DefaultConfig() *Config {
 	return &Config{
-		MaxIdleConns:  DefaultMaxIdleConns,
-		MaxTotalConns: DefaultMaxTotalConns,
-		IdleTimeout:   DefaultIdleTimeout,
-		KeepAlive:     DefaultKeepAlive,
-		HTTPConfig:    DefaultHTTPConfig(),
-		SOCKSConfig:   DefaultSOCKSConfig(), // 使用新的默认配置
+		IdleTimeout: DefaultIdleTimeout,
+		KeepAlive:   DefaultKeepAlive,
+		HTTPConfig:  DefaultHTTPConfig(),
+		SOCKSConfig: DefaultSOCKSConfig(), // 使用新的默认配置
 
 		ProxyType:     Direct,
 		ProxyIP:       "",

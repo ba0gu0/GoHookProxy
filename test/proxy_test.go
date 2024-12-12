@@ -48,6 +48,7 @@ func TestProxyConnections(t *testing.T) {
 			cfg.ProxyIP = proxy.ip
 			cfg.ProxyPort = proxy.port
 			cfg.HTTPConfig.SkipVerify = true
+			cfg.MetricsEnable = true
 
 			// 创建代理管理器
 			pm, err := PM.New(cfg)

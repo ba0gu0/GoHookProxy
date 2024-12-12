@@ -7,20 +7,14 @@ A Go library for transparently hooking network operations and routing them throu
 
 - 支持所有网络操作的透明代理
 - 支持 HTTP、HTTPS、HTTP2、SOCKS4A 和 SOCKS5 代理
-- 内置连接池
-- 自动重试与指数退避
 - 详细的指标收集
 - 无需修改代码
-- 线程安全
 - 易于使用
 
 - Transparent proxy support for all network operations
 - Support for HTTP, HTTPS, HTTP2, SOCKS4A, and SOCKS5 proxies
-- Built-in connection pooling
-- Automatic retry with exponential backoff
 - Detailed metrics collection
 - No code modification required
-- Thread-safe
 - Easy to use
 
 ## 指标 | Metrics
@@ -38,20 +32,12 @@ The library provides detailed metrics including:
 - 协议统计 | Protocol statistics
 - 带宽使用情况 | Bandwidth usage
 
-## 重试机制 | Retry Mechanism
-
-可配置的自动重试机制:
-Automatic retry with configurable:
-
-- 最大重试次数 | Maximum retries
-- 初始延迟 | Initial delay
-- 最大延迟 | Maximum delay
-- 退避倍数 | Backoff multiplier
 
 ## 安装 | Installation
 
 ```bash
 go get github.com/ba0gu0/GoHookProxy
+go get github.com/agiledragon/gomonkey/v2
 ```
 
 ## 快速开始 | Quick Start
@@ -65,6 +51,7 @@ import (
     "github.com/ba0gu0/GoHookProxy/config"
     "github.com/ba0gu0/GoHookProxy/proxy"
     "github.com/ba0gu0/GoHookProxy/hook"
+    "github.com/agiledragon/gomonkey/v2"
 )
 
 func main() {
@@ -79,11 +66,6 @@ func main() {
     // 可选: 启用指标收集 | Optional: Enable metrics collection
     cfg.MetricsEnable = true
     
-    // 可选: 设置连接池参数 | Optional: Set connection pool parameters
-    cfg.MaxIdleConns = 100
-    cfg.MaxTotalConns = 1000
-    cfg.IdleTimeout = 90 * time.Second
-
     // 创建代理管理器 | Create proxy manager
     pm, err := proxy.New(cfg)
     if err != nil {
@@ -91,11 +73,13 @@ func main() {
     }
 
     // 创建并启用 hook | Create and enable hook
-    h := hook.New(pm)
-    if err := h.Enable(); err != nil {
-        log.Fatal(err)
-    }
-    defer h.Disable()
+    patcher := gomonkey.NewPatches()
+	// 创建并启用hook
+	h := hook.New(pm, patcher)
+	if err := h.Enable(); err != nil {
+		log.Fatal("Failed to enable hook:", err)
+	}
+	defer h.Disable()
 
     // 所有网络操作现在都会通过代理 | All network operations will now go through the proxy
     // Your code here...
@@ -115,16 +99,7 @@ type Config struct {
     ProxyIP       string    // 代理服务器地址 | Proxy server address
     ProxyPort     int       // 代理服务器端口 | Proxy server port
     
-    // 连接池设置 | Connection pool settings
-    MaxIdleConns  int           // 最大空闲连接数 | Maximum idle connections
-    MaxTotalConns int           // 最大总连接数 | Maximum total connections
-    IdleTimeout   time.Duration // 空闲连接超时时间 | Idle connection timeout
     KeepAlive     time.Duration // TCP keepalive 间隔 | TCP keepalive interval
-    
-    // TLS 设置 | TLS settings
-    SkipVerify    bool   // 是否跳过证书验证(默认为 true) | Skip certificate verification (default: true)
-    CertFile      string // 可选的客户端证书文件 | Optional client certificate file
-    KeyFile       string // 可选的客户端密钥文件 | Optional client key file
     
     // HTTP 代理设置 | HTTP proxy settings
     HTTPConfig    *HTTPConfig
@@ -141,6 +116,10 @@ type HTTPConfig struct {
     Password    string        // HTTP 代理密码 | HTTP proxy password
     Timeout     time.Duration // 请求超时时间 | Request timeout
     KeepAlive   time.Duration // Keep-alive 时间 | Keep-alive duration
+    // TLS 设置 | TLS settings
+    SkipVerify    bool   // 是否跳过证书验证(默认为 true) | Skip certificate verification (default: true)
+    CertFile      string // 可选的客户端证书文件 | Optional client certificate file
+    KeyFile       string // 可选的客户端密钥文件 | Optional client key file
 }
 
 type SOCKSConfig struct {
@@ -173,20 +152,13 @@ cfg := &config.Config{
     ProxyType: config.HTTP2,
     ProxyIP: "127.0.0.1",
     ProxyPort: 1080,
-    SkipVerify: false,  // 启用证书验证 | Enable certificate verification
-    CertFile: "/path/to/cert.pem",  // 可选 | Optional
-    KeyFile: "/path/to/key.pem",    // 可选 | Optional
+    HTTPConfig: &HTTPConfig{
+        SkipVerify: false,  // 启用证书验证 | Enable certificate verification
+        CertFile: "/path/to/cert.pem",  // 可选 | Optional
+        KeyFile: "/path/to/key.pem",    // 可选 | Optional
+    },
 }
 ```
-
-## 线程安全 | Thread Safety
-
-该库完全线程安全。你可以:
-The library is completely thread-safe. You can:
-
-- 在运行时更新代理配置 | Update proxy configuration at runtime
-- 随时启用/禁用代理 | Enable/disable proxy at any time
-- 在并发环境中使用 | Use in concurrent environments
 
 ## 错误处理 | Error Handling
 

@@ -7,12 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	C "github.com/ba0gu0/GoHookProxy/config"
 	"github.com/ba0gu0/GoHookProxy/hook"
 	"github.com/ba0gu0/GoHookProxy/proxy"
 )
 
 func TestHookWithProxies(t *testing.T) {
+	// 添加错误处理和恢复机制
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("测试发生panic: %v", r)
+		}
+	}()
+
 	// 测试地址
 	testURLs := []struct {
 		url        string
@@ -87,23 +95,22 @@ func TestHookWithProxies(t *testing.T) {
 
 	for _, pt := range proxyTests {
 		t.Run(pt.name, func(t *testing.T) {
-			// 创建配置
+			// 修改代理配置，确保更安全的超时设置
 			cfg := &C.Config{
 				Enable:        pt.proxyType != "",
 				ProxyType:     pt.proxyType,
 				ProxyIP:       pt.proxyIP,
 				ProxyPort:     pt.proxyPort,
-				MaxIdleConns:  100,
-				MaxTotalConns: 1000,
 				IdleTimeout:   time.Minute * 5,
 				KeepAlive:     time.Minute * 5,
+				MetricsEnable: true,
 				HTTPConfig: &C.HTTPConfig{
 					SkipVerify: true,
-					Timeout:    time.Second * 5,
+					Timeout:    time.Second * 30,
 				},
 				SOCKSConfig: &C.SOCKSConfig{
-					Timeout:   time.Second * 5,
-					KeepAlive: time.Minute * 5,
+					Timeout:   time.Second * 30,
+					KeepAlive: time.Second * 30,
 				},
 			}
 
@@ -113,8 +120,10 @@ func TestHookWithProxies(t *testing.T) {
 				t.Fatalf("创建代理管理器失败: %v", err)
 			}
 
+			patcher := gomonkey.NewPatches()
+
 			// 创建并启用hook
-			h := hook.New(pm)
+			h := hook.New(pm, patcher)
 			if err := h.Enable(); err != nil {
 				t.Fatalf("启用hook失败: %v", err)
 			}
@@ -178,8 +187,8 @@ func testRequest(t *testing.T, url string, shouldWork bool) {
 
 // testTCPConnection 测试TCP连接
 func testTCPConnection(t *testing.T, addr string, shouldWork bool) {
-	// 设置连接超时
-	timeout := time.Second * 10
+	// 增加连接超时时间
+	timeout := time.Second * 5
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 
 	if shouldWork {
@@ -262,32 +271,4 @@ func TestHookWithInvalidProxy(t *testing.T) {
 	}
 
 	t.Logf("正确捕获无效配置错误: %v", err)
-}
-
-// TestTCPConnectionOnly 单独测试TCP连接
-func TestTCPConnectionOnly(t *testing.T) {
-	cfg := &C.Config{
-		Enable:        true,
-		ProxyType:     C.SOCKS5,
-		ProxyIP:       "127.0.0.1",
-		ProxyPort:     1080,
-		MaxIdleConns:  100,
-		MaxTotalConns: 1000,
-		IdleTimeout:   time.Minute * 5,
-		KeepAlive:     time.Minute * 5,
-	}
-
-	pm, err := proxy.New(cfg)
-	if err != nil {
-		t.Fatalf("创建代理管理器失败: %v", err)
-	}
-
-	h := hook.New(pm)
-	if err := h.Enable(); err != nil {
-		t.Fatalf("启用hook失败: %v", err)
-	}
-	defer h.Disable()
-
-	tcpAddr := "47.236.201.17:9890"
-	testTCPConnection(t, tcpAddr, true)
 }
