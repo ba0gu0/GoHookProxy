@@ -7,19 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
 	C "github.com/ba0gu0/GoHookProxy/config"
 	"github.com/ba0gu0/GoHookProxy/hook"
 	"github.com/ba0gu0/GoHookProxy/proxy"
 )
 
 func TestHookWithProxies(t *testing.T) {
-	// 添加错误处理和恢复机制
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("测试发生panic: %v", r)
-		}
-	}()
 
 	// 测试地址
 	testURLs := []struct {
@@ -120,10 +113,8 @@ func TestHookWithProxies(t *testing.T) {
 				t.Fatalf("创建代理管理器失败: %v", err)
 			}
 
-			patcher := gomonkey.NewPatches()
-
 			// 创建并启用hook
-			h := hook.New(pm, patcher)
+			h := hook.New(pm)
 			if err := h.Enable(); err != nil {
 				t.Fatalf("启用hook失败: %v", err)
 			}

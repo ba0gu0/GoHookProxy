@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/ba0gu0/GoHookProxy/config"
 	"github.com/ba0gu0/GoHookProxy/hook"
 	"github.com/ba0gu0/GoHookProxy/proxy"
@@ -20,6 +19,7 @@ func main() {
 
 	// 根据需要修改配置
 	cfg.Enable = true
+	cfg.HookUDP = true
 	cfg.ProxyType = config.SOCKS5
 	cfg.ProxyIP = "127.0.0.1"
 	cfg.ProxyPort = 1080
@@ -43,9 +43,8 @@ func main() {
 		log.Fatal("Failed to create proxy manager:", err)
 	}
 
-	patcher := gomonkey.NewPatches()
 	// 创建并启用hook
-	h := hook.New(pm, patcher)
+	h := hook.New(pm)
 	if err := h.Enable(); err != nil {
 		log.Fatal("Failed to enable hook:", err)
 	}
@@ -119,16 +118,8 @@ func testRequest(url string) error {
 	fmt.Printf("Response from %s (%d bytes):\n%s\n",
 		url,
 		len(body),
-		string(body[:min(len(body), 100)]), // 只显示前100个字符
+		string(body[:100]), // 只显示前100个字符
 	)
 
 	return nil
-}
-
-// min returns the smaller of x or y
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
 }

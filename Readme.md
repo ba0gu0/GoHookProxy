@@ -37,7 +37,6 @@ The library provides detailed metrics including:
 
 ```bash
 go get github.com/ba0gu0/GoHookProxy
-go get github.com/agiledragon/gomonkey/v2
 ```
 
 ## 快速开始 | Quick Start
@@ -62,7 +61,8 @@ func main() {
     cfg.ProxyType = config.SOCKS5
     cfg.ProxyIP = "127.0.0.1"
     cfg.ProxyPort = 1080
-    
+    // 启用HOOK UDP | Enable HOOK UDP
+    cfg.HookUDP = true
     // 可选: 启用指标收集 | Optional: Enable metrics collection
     cfg.MetricsEnable = true
     
@@ -72,10 +72,8 @@ func main() {
         log.Fatal(err)
     }
 
-    // 创建并启用 hook | Create and enable hook
-    patcher := gomonkey.NewPatches()
 	// 创建并启用hook
-	h := hook.New(pm, patcher)
+	h := hook.New(pm)
 	if err := h.Enable(); err != nil {
 		log.Fatal("Failed to enable hook:", err)
 	}
@@ -98,6 +96,8 @@ type Config struct {
     ProxyType     string    // 代理类型 | Proxy type: "http", "https", "http2", "socks4a", "socks5"
     ProxyIP       string    // 代理服务器地址 | Proxy server address
     ProxyPort     int       // 代理服务器端口 | Proxy server port
+    HookUDP       bool      // 是否启用HOOK UDP | Enable HOOK UDP 
+    // 只有SOCKS5代理才支持代理UDP，如果其他代理配置了HookUDP，则请求会失败，因为其他代理不支持代理UDP内容 | Only SOCKS5 proxies support proxying UDP. If other proxies are configured with HookUDP, the request will fail because other proxies do not support proxying UDP content
     
     KeepAlive     time.Duration // TCP keepalive 间隔 | TCP keepalive interval
     

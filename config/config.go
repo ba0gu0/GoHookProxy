@@ -26,6 +26,7 @@ const (
 	DefaultSOCKSPass      = ""
 
 	// Hook defaults
+	DefaultHookUDP       = false
 	DefaultDNSHook       = false
 	DefaultTLSHook       = false
 	DefaultMetricsEnable = false // 默认关闭指标收集
@@ -53,6 +54,7 @@ type Config struct {
 	SOCKSConfig *SOCKSConfig
 
 	// Proxy settings
+	HookUDP   bool
 	ProxyType ProxyType
 	ProxyIP   string
 	ProxyPort int
@@ -94,7 +96,7 @@ type SOCKSConfig struct {
 // DefaultSOCKSConfig 返回默认SOCKS配置
 func DefaultSOCKSConfig() *SOCKSConfig {
 	return &SOCKSConfig{
-		EnableUDP:  false,
+		EnableUDP:  DefaultHookUDP,
 		Timeout:    DefaultSOCKSTimeout,
 		KeepAlive:  DefaultSOCKSKeepAlive,
 		User:       DefaultSOCKSUser,
@@ -123,6 +125,7 @@ func DefaultConfig() *Config {
 		HTTPConfig:  DefaultHTTPConfig(),
 		SOCKSConfig: DefaultSOCKSConfig(), // 使用新的默认配置
 
+		HookUDP:       DefaultHookUDP,
 		ProxyType:     Direct,
 		ProxyIP:       "",
 		ProxyPort:     0,

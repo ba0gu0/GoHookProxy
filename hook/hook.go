@@ -26,10 +26,10 @@ type Hook struct {
 	dnsTTL   time.Duration
 }
 
-func New(pm *proxy.ProxyManager, patcher *gomonkey.Patches) *Hook {
+func New(pm *proxy.ProxyManager) *Hook {
 	return &Hook{
 		proxyManager: pm,
-		patcher:      patcher,
+		patcher:      gomonkey.NewPatches(),
 		dnsTTL:       5 * time.Minute,
 	}
 }
@@ -71,14 +71,31 @@ func directDialContext(ctx context.Context, network, address string) (net.Conn, 
 
 		return conn, nil
 
+	case "unix", "unixpacket", "unixgram":
+		addr, err := net.ResolveUnixAddr(network, address)
+		if err != nil {
+			return nil, err
+		}
+		conn, err := net.DialUnix(network, nil, addr)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			<-ctx.Done()
+			conn.Close()
+		}()
+
+		return conn, nil
+
 	default:
 		return nil, fmt.Errorf("不支持的网络类型: %s", network)
 	}
 }
 
 func (h *Hook) Enable() error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	// h.mu.Lock()
+	// defer h.mu.Unlock()
 
 	if h.enabled {
 		return nil
@@ -99,10 +116,10 @@ func (h *Hook) Enable() error {
 					}
 				}()
 
-				if h.proxyManager.IsProxyAddress(addr) {
-					return directDialContext(ctx, network, addr)
+				if h.proxyManager.ShouldProxy(network, addr) {
+					return h.proxyManager.DialContext(ctx, network, addr)
 				}
-				return h.proxyManager.DialContext(ctx, network, addr)
+				return directDialContext(ctx, network, addr)
 			})
 
 		if patcher == nil {
@@ -161,8 +178,8 @@ func (h *Hook) Enable() error {
 }
 
 func (h *Hook) Disable() error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	// h.mu.Lock()
+	// defer h.mu.Unlock()
 
 	if !h.enabled {
 		return nil
